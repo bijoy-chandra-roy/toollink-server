@@ -74,8 +74,9 @@ app.post("/addTool", (req, res) => {
 });
 
 // 2. Get All Tools (READ)
+/* Get All Available Tools */
 app.get("/getTools", (req, res) => {
-    const sql = "SELECT * FROM tools ORDER BY toolId DESC";
+    const sql = "SELECT * FROM tools WHERE status = 'available' ORDER BY toolId DESC";
 
     db.query(sql, (err, result) => {
         if (err) {
@@ -232,10 +233,10 @@ app.post("/rentTool", (req, res) => {
 
 // 9. Get My Rentals (READ Orders)
 app.get("/myRentals/:userId", (req, res) => {
-  const userId = req.params.userId;
+    const userId = req.params.userId;
 
-  // FIX: Added r.toolId to the SELECT list below
-  const sql = `
+    // FIX: Added r.toolId to the SELECT list below
+    const sql = `
     SELECT 
       r.rentalId, r.toolId, r.status, r.startDate, r.endDate, r.totalPrice,
       t.toolName, t.category, t.toolImage
@@ -245,14 +246,14 @@ app.get("/myRentals/:userId", (req, res) => {
     ORDER BY r.startDate DESC
   `;
 
-  db.query(sql, [userId], (err, result) => {
-    if (err) {
-      console.log(err);
-      res.status(500).send(err);
-    } else {
-      res.send(result);
-    }
-  });
+    db.query(sql, [userId], (err, result) => {
+        if (err) {
+            console.log(err);
+            res.status(500).send(err);
+        } else {
+            res.send(result);
+        }
+    });
 });
 
 // --- Wishlist Routes ---
