@@ -23,7 +23,7 @@ db.connect((err) => {
     console.log("ToolLink MySQL server connected...");
 });
 
-// Register Route
+// register route
 app.post("/register", (req, res) => {
     const { userId, userName, userPassword, userImage } = req.body;
 
@@ -39,7 +39,7 @@ app.post("/register", (req, res) => {
     });
 });
 
-// Login Route
+// login route
 app.post("/login", (req, res) => {
     const { userId, userPassword } = req.body;
 
@@ -55,9 +55,9 @@ app.post("/login", (req, res) => {
     });
 });
 
-// --- Tool Routes ---
+// --- tool routes ---
 
-// 1. Add a New Tool (CREATE)
+// 1. add a new tool (create)
 app.post("/addTool", (req, res) => {
     const { ownerId, toolName, category, price, toolImage } = req.body;
 
@@ -73,10 +73,8 @@ app.post("/addTool", (req, res) => {
     });
 });
 
-// 2. Get All Tools (READ)
-/* Get All Available Tools */
+// 2. get all tools (read)
 app.get("/getTools", (req, res) => {
-    // MODIFIED: Added JOIN to users table to fetch owner details
     const sql = `
         SELECT t.*, u.userName AS ownerName, u.userImage AS ownerImage
         FROM tools t
@@ -95,10 +93,9 @@ app.get("/getTools", (req, res) => {
     });
 });
 
-// 3. Get Tools for a Specific User (READ - Private) -> UPDATED
+// 3. get tools for a specific user (read - private) -> updated
 app.get("/getMyListings/:userId", (req, res) => {
     const userId = req.params.userId;
-    // NEW: Left Join rentals (active only) and users to see who is renting your tool
     const sql = `
         SELECT 
             t.*, 
@@ -121,11 +118,10 @@ app.get("/getMyListings/:userId", (req, res) => {
     });
 });
 
-// 4. Delete a Tool (DELETE) - With Safety Check
+// 4. delete a tool (delete) - with safety check
 app.delete("/deleteTool/:toolId", (req, res) => {
     const toolId = req.params.toolId;
 
-    // Check for active rentals first
     const checkSql = "SELECT * FROM rentals WHERE toolId = ? AND status = 'active'";
 
     db.query(checkSql, [toolId], (err, results) => {
@@ -134,12 +130,10 @@ app.delete("/deleteTool/:toolId", (req, res) => {
             return res.status(500).send(err);
         }
 
-        // If an active rental exists, BLOCK the delete
         if (results.length > 0) {
             return res.status(400).send({ message: "Cannot delete this tool because it is currently rented out." });
         }
 
-        // If safe, proceed to delete
         const deleteSql = "DELETE FROM tools WHERE toolId = ?";
         db.query(deleteSql, [toolId], (err, result) => {
             if (err) {
@@ -151,7 +145,7 @@ app.delete("/deleteTool/:toolId", (req, res) => {
     });
 });
 
-// 5. Get Lender Stats (Earnings & Active Rentals)
+// 5. get lender stats (earnings & active rentals)
 app.get("/getLenderStats/:userId", (req, res) => {
     const userId = req.params.userId;
 
@@ -169,7 +163,6 @@ app.get("/getLenderStats/:userId", (req, res) => {
             console.log(err);
             res.status(500).send(err);
         } else {
-            // If result is null (no rentals), return 0
             const stats = {
                 totalEarnings: result[0].totalEarnings || 0,
                 activeRentals: result[0].activeRentals || 0
@@ -179,11 +172,10 @@ app.get("/getLenderStats/:userId", (req, res) => {
     });
 });
 
-// 6. Update User Profile (UPDATE)
+// 6. update user profile (update)
 app.put("/updateUser", (req, res) => {
     const { userId, userName, userPassword, userImage } = req.body;
 
-    // Only update password if it's provided
     let sql = "UPDATE users SET userName = ?, userImage = ? WHERE userId = ?";
     let params = [userName, userImage, userId];
 
@@ -202,15 +194,12 @@ app.put("/updateUser", (req, res) => {
     });
 });
 
-// 7. Update a Tool (UPDATE)
+// 7. update a tool (update)
 app.put("/updateTool", (req, res) => {
-    // NEW: Destructure toolImage from req.body
     const { toolId, toolName, category, price, toolImage } = req.body;
 
-    // NEW: Update SQL to set toolImage as well
     const sql = "UPDATE tools SET toolName = ?, category = ?, price = ?, toolImage = ? WHERE toolId = ?";
 
-    // NEW: Add toolImage to the parameters array
     db.query(sql, [toolName, category, price, toolImage, toolId], (err, result) => {
         if (err) {
             console.log(err);
@@ -221,12 +210,11 @@ app.put("/updateTool", (req, res) => {
     });
 });
 
-// 8. Rent a Tool (CREATE Rental)
-// 8. Rent a Tool (CREATE Rental) - With Availability Check
+// 8. rent a tool (create rental)
+// 8. rent a tool (create rental) - with availability check
 app.post("/rentTool", (req, res) => {
     const { toolId, renterId, days } = req.body;
 
-    // 1. Check if tool exists AND is available
     const checkSql = "SELECT price, status FROM tools WHERE toolId = ?";
     
     db.query(checkSql, [toolId], (err, results) => {
@@ -238,12 +226,10 @@ app.post("/rentTool", (req, res) => {
 
         const tool = results[0];
 
-        // [CRITICAL FIX] Block rental if already rented
         if (tool.status !== 'available') {
             return res.status(400).send({ message: "This tool is no longer available." });
         }
 
-        // 2. Calculate Dates & Price
         const pricePerDay = tool.price;
         const totalPrice = pricePerDay * parseInt(days);
         
@@ -251,7 +237,6 @@ app.post("/rentTool", (req, res) => {
         const endDate = new Date();
         endDate.setDate(startDate.getDate() + parseInt(days));
 
-        // 3. Insert Rental Record
         const rentSql = `
             INSERT INTO rentals (toolId, renterId, startDate, endDate, totalPrice, status) 
             VALUES (?, ?, NOW(), ?, ?, 'active')
@@ -260,7 +245,6 @@ app.post("/rentTool", (req, res) => {
         db.query(rentSql, [toolId, renterId, endDate, totalPrice], (err, result) => {
             if (err) return res.status(500).send(err);
 
-            // 4. Update Tool Status to 'rented'
             const updateToolSql = "UPDATE tools SET status = 'rented' WHERE toolId = ?";
             db.query(updateToolSql, [toolId], (err, updateResult) => {
                 if (err) {
@@ -272,11 +256,10 @@ app.post("/rentTool", (req, res) => {
     });
 });
 
-// 9. Get My Rentals (READ Orders) -> UPDATED
+// 9. get my rentals (read orders) -> updated
 app.get("/myRentals/:userId", (req, res) => {
     const userId = req.params.userId;
 
-    // FIX: Changed JOIN to LEFT JOIN so orders still appear even if tool/owner data is missing
     const sql = `
     SELECT 
       r.rentalId, r.toolId, r.status, r.startDate, r.endDate, r.totalPrice,
@@ -299,15 +282,14 @@ app.get("/myRentals/:userId", (req, res) => {
     });
 });
 
-// --- Wishlist Routes ---
+// --- wishlist routes ---
 
-// 10. Add to Wishlist
+// 10. add to wishlist
 app.post("/addToWishlist", (req, res) => {
     const { userId, toolId } = req.body;
     const sql = "INSERT INTO wishlist (userId, toolId) VALUES (?, ?)";
     db.query(sql, [userId, toolId], (err, result) => {
         if (err) {
-            // If duplicate, we can just ignore or send message
             res.send({ message: "Already in wishlist" });
         } else {
             res.send(result);
@@ -315,7 +297,7 @@ app.post("/addToWishlist", (req, res) => {
     });
 });
 
-// 11. Remove from Wishlist (Updated to use URL params)
+// 11. remove from wishlist (updated to use url params)
 app.delete("/removeFromWishlist/:userId/:toolId", (req, res) => {
     const userId = req.params.userId;
     const toolId = req.params.toolId;
@@ -331,7 +313,7 @@ app.delete("/removeFromWishlist/:userId/:toolId", (req, res) => {
     });
 });
 
-// 12. Get User's Wishlist (IDs only - useful for checking heart icons)
+// 12. get user's wishlist (ids only - useful for checking heart icons)
 app.get("/getWishlistIds/:userId", (req, res) => {
     const userId = req.params.userId;
     const sql = "SELECT toolId FROM wishlist WHERE userId = ?";
@@ -341,7 +323,7 @@ app.get("/getWishlistIds/:userId", (req, res) => {
     });
 });
 
-// 13. Get Full Wishlist Items (For Wishlist Page)
+// 13. get full wishlist items (for wishlist page)
 app.get("/myWishlist/:userId", (req, res) => {
     const userId = req.params.userId;
     const sql = `
@@ -351,7 +333,7 @@ app.get("/myWishlist/:userId", (req, res) => {
         u.userImage AS ownerImage 
     FROM wishlist w
     JOIN tools t ON w.toolId = t.toolId
-    JOIN users u ON t.ownerId = u.userId -- MODIFIED: Added JOIN for owner info
+    JOIN users u ON t.ownerId = u.userId 
     WHERE w.userId = ?
     `;
     db.query(sql, [userId], (err, result) => {
@@ -360,11 +342,10 @@ app.get("/myWishlist/:userId", (req, res) => {
     });
 });
 
-// 14. Return a Tool (UPDATE Rental & Tool Status)
+// 14. return a tool (update rental & tool status)
 app.post("/returnTool", (req, res) => {
     const { rentalId, toolId } = req.body;
 
-    // 1. Update Rental Status to 'completed'
     const updateRentalSql = "UPDATE rentals SET status = 'completed' WHERE rentalId = ?";
 
     db.query(updateRentalSql, [rentalId], (err, result) => {
@@ -372,7 +353,6 @@ app.post("/returnTool", (req, res) => {
             return res.status(500).send(err);
         }
 
-        // 2. Update Tool Status to 'available'
         const updateToolSql = "UPDATE tools SET status = 'available' WHERE toolId = ?";
         db.query(updateToolSql, [toolId], (err, toolResult) => {
             if (err) {
