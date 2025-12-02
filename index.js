@@ -76,7 +76,14 @@ app.post("/addTool", (req, res) => {
 // 2. Get All Tools (READ)
 /* Get All Available Tools */
 app.get("/getTools", (req, res) => {
-    const sql = "SELECT * FROM tools WHERE status = 'available' ORDER BY toolId DESC";
+    // MODIFIED: Added JOIN to users table to fetch owner details
+    const sql = `
+        SELECT t.*, u.userName AS ownerName, u.userImage AS ownerImage
+        FROM tools t
+        JOIN users u ON t.ownerId = u.userId
+        WHERE t.status = 'available' 
+        ORDER BY t.toolId DESC
+    `;
 
     db.query(sql, (err, result) => {
         if (err) {
@@ -338,10 +345,15 @@ app.get("/getWishlistIds/:userId", (req, res) => {
 app.get("/myWishlist/:userId", (req, res) => {
     const userId = req.params.userId;
     const sql = `
-    SELECT t.* FROM wishlist w
+    SELECT 
+        t.*, 
+        u.userName AS ownerName, 
+        u.userImage AS ownerImage 
+    FROM wishlist w
     JOIN tools t ON w.toolId = t.toolId
+    JOIN users u ON t.ownerId = u.userId -- MODIFIED: Added JOIN for owner info
     WHERE w.userId = ?
-  `;
+    `;
     db.query(sql, [userId], (err, result) => {
         if (err) console.log(err);
         res.send(result);
