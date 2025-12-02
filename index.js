@@ -88,10 +88,21 @@ app.get("/getTools", (req, res) => {
     });
 });
 
-// 3. Get Tools for a Specific User (READ - Private)
+// 3. Get Tools for a Specific User (READ - Private) -> UPDATED
 app.get("/getMyListings/:userId", (req, res) => {
     const userId = req.params.userId;
-    const sql = "SELECT * FROM tools WHERE ownerId = ? ORDER BY toolId DESC";
+    // NEW: Left Join rentals (active only) and users to see who is renting your tool
+    const sql = `
+        SELECT 
+            t.*, 
+            r.startDate, r.endDate, 
+            u.userName AS renterName
+        FROM tools t
+        LEFT JOIN rentals r ON t.toolId = r.toolId AND r.status = 'active'
+        LEFT JOIN users u ON r.renterId = u.userId
+        WHERE t.ownerId = ? 
+        ORDER BY t.toolId DESC
+    `;
 
     db.query(sql, [userId], (err, result) => {
         if (err) {
@@ -184,13 +195,16 @@ app.put("/updateUser", (req, res) => {
     });
 });
 
-// 7. Update a Tool (UPDATE) - Modified to exclude status
+// 7. Update a Tool (UPDATE)
 app.put("/updateTool", (req, res) => {
-    const { toolId, toolName, category, price } = req.body;
+    // NEW: Destructure toolImage from req.body
+    const { toolId, toolName, category, price, toolImage } = req.body;
 
-    const sql = "UPDATE tools SET toolName = ?, category = ?, price = ? WHERE toolId = ?";
+    // NEW: Update SQL to set toolImage as well
+    const sql = "UPDATE tools SET toolName = ?, category = ?, price = ?, toolImage = ? WHERE toolId = ?";
 
-    db.query(sql, [toolName, category, price, toolId], (err, result) => {
+    // NEW: Add toolImage to the parameters array
+    db.query(sql, [toolName, category, price, toolImage, toolId], (err, result) => {
         if (err) {
             console.log(err);
             res.status(500).send(err);
@@ -251,17 +265,19 @@ app.post("/rentTool", (req, res) => {
     });
 });
 
-// 9. Get My Rentals (READ Orders)
+// 9. Get My Rentals (READ Orders) -> UPDATED
 app.get("/myRentals/:userId", (req, res) => {
     const userId = req.params.userId;
 
-    // FIX: Added r.toolId to the SELECT list below
+    // FIX: Changed JOIN to LEFT JOIN so orders still appear even if tool/owner data is missing
     const sql = `
     SELECT 
       r.rentalId, r.toolId, r.status, r.startDate, r.endDate, r.totalPrice,
-      t.toolName, t.category, t.toolImage
+      t.toolName, t.category, t.toolImage,
+      u.userName AS ownerName
     FROM rentals r
-    JOIN tools t ON r.toolId = t.toolId
+    LEFT JOIN tools t ON r.toolId = t.toolId
+    LEFT JOIN users u ON t.ownerId = u.userId
     WHERE r.renterId = ?
     ORDER BY r.startDate DESC
   `;
