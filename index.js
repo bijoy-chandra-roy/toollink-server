@@ -103,18 +103,33 @@ app.get("/getMyListings/:userId", (req, res) => {
     });
 });
 
-// 4. Delete a Tool (DELETE)
+// 4. Delete a Tool (DELETE) - With Safety Check
 app.delete("/deleteTool/:toolId", (req, res) => {
     const toolId = req.params.toolId;
-    const sql = "DELETE FROM tools WHERE toolId = ?";
 
-    db.query(sql, [toolId], (err, result) => {
+    // Check for active rentals first
+    const checkSql = "SELECT * FROM rentals WHERE toolId = ? AND status = 'active'";
+
+    db.query(checkSql, [toolId], (err, results) => {
         if (err) {
             console.log(err);
-            res.status(500).send(err);
-        } else {
-            res.send(result);
+            return res.status(500).send(err);
         }
+
+        // If an active rental exists, BLOCK the delete
+        if (results.length > 0) {
+            return res.status(400).send({ message: "Cannot delete this tool because it is currently rented out." });
+        }
+
+        // If safe, proceed to delete
+        const deleteSql = "DELETE FROM tools WHERE toolId = ?";
+        db.query(deleteSql, [toolId], (err, result) => {
+            if (err) {
+                console.log(err);
+                return res.status(500).send(err);
+            }
+            res.send(result);
+        });
     });
 });
 
@@ -186,38 +201,43 @@ app.put("/updateTool", (req, res) => {
 });
 
 // 8. Rent a Tool (CREATE Rental)
+// 8. Rent a Tool (CREATE Rental) - With Availability Check
 app.post("/rentTool", (req, res) => {
     const { toolId, renterId, days } = req.body;
 
-    // 1. Calculate End Date
-    const startDate = new Date();
-    const endDate = new Date();
-    endDate.setDate(startDate.getDate() + parseInt(days));
-
-    // 2. Get Tool Price to calculate Total
-    const priceSql = "SELECT price FROM tools WHERE toolId = ?";
-
-    db.query(priceSql, [toolId], (err, results) => {
-        if (err) {
-            return res.status(500).send(err);
-        }
+    // 1. Check if tool exists AND is available
+    const checkSql = "SELECT price, status FROM tools WHERE toolId = ?";
+    
+    db.query(checkSql, [toolId], (err, results) => {
+        if (err) return res.status(500).send(err);
+        
         if (results.length === 0) {
             return res.status(404).send({ message: "Tool not found" });
         }
 
-        const pricePerDay = results[0].price;
+        const tool = results[0];
+
+        // [CRITICAL FIX] Block rental if already rented
+        if (tool.status !== 'available') {
+            return res.status(400).send({ message: "This tool is no longer available." });
+        }
+
+        // 2. Calculate Dates & Price
+        const pricePerDay = tool.price;
         const totalPrice = pricePerDay * parseInt(days);
+        
+        const startDate = new Date();
+        const endDate = new Date();
+        endDate.setDate(startDate.getDate() + parseInt(days));
 
         // 3. Insert Rental Record
         const rentSql = `
-      INSERT INTO rentals (toolId, renterId, startDate, endDate, totalPrice, status) 
-      VALUES (?, ?, NOW(), ?, ?, 'active')
-    `;
+            INSERT INTO rentals (toolId, renterId, startDate, endDate, totalPrice, status) 
+            VALUES (?, ?, NOW(), ?, ?, 'active')
+        `;
 
         db.query(rentSql, [toolId, renterId, endDate, totalPrice], (err, result) => {
-            if (err) {
-                return res.status(500).send(err);
-            }
+            if (err) return res.status(500).send(err);
 
             // 4. Update Tool Status to 'rented'
             const updateToolSql = "UPDATE tools SET status = 'rented' WHERE toolId = ?";
